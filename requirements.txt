@@ -1,0 +1,16 @@
+# Microphone recording
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.26
+
+# GUI
+pywebview>=5.1
+
+# Pipeline
+openai>=1.40
+
+# Notion
+notion-client>=2.2
+
+# Packaging
+py2app>=0.28

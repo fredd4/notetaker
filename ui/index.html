@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notetaker</title>
+<style>
+  :root {
+    --bg: #1c1c1e;
+    --panel: #2c2c2e;
+    --text: #f2f2f7;
+    --muted: #8e8e93;
+    --accent: #ff453a;
+    --accent-dim: #5c2320;
+    --ok: #30d158;
+    --border: #3a3a3c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 24px;
+    gap: 22px;
+  }
+  h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .timer {
+    font-size: 52px;
+    font-weight: 200;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+  }
+  .record-btn {
+    width: 92px; height: 92px;
+    border-radius: 50%;
+    border: 3px solid var(--border);
+    background: var(--accent);
+    cursor: pointer;
+    transition: all .18s ease;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .record-btn:hover { transform: scale(1.04); }
+  .record-btn:disabled { opacity: .4; cursor: default; transform: none; }
+  .record-btn .inner {
+    width: 34px; height: 34px;
+    background: #fff;
+    border-radius: 50%;
+    transition: all .18s ease;
+  }
+  /* stan nagrywania: kwadrat = stop */
+  body.recording .record-btn .inner { border-radius: 6px; width: 30px; height: 30px; }
+  body.recording .record-btn { animation: pulse 1.6s infinite; }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 var(--accent-dim); }
+    50%     { box-shadow: 0 0 0 12px transparent; }
+  }
+  .stats {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row { display: flex; justify-content: space-between; font-size: 13px; }
+  .row .label { color: var(--muted); }
+  .row .val { font-variant-numeric: tabular-nums; }
+  .status {
+    font-size: 13px;
+    color: var(--muted);
+    min-height: 18px;
+    text-align: center;
+  }
+  .status.error { color: var(--accent); }
+  .status.ok { color: var(--ok); }
+  .dot { color: var(--accent); }
+  .link {
+    color: #0a84ff; cursor: pointer; text-decoration: none;
+  }
+  .link:hover { text-decoration: underline; }
+  .mic-row { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+  .mic-row .cap {
+    font-size: 11px; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  .warn { color: #ffd60a; text-align: right; }
+  select {
+    width: 100%;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px;
+    -webkit-appearance: none; cursor: pointer;
+  }
+  select:disabled { opacity: .5; cursor: default; }
+
+  .topbar {
+    width: 100%; display: flex; justify-content: flex-end;
+    position: absolute; top: 16px; right: 20px;
+  }
+  .gear-btn {
+    background: none; border: none; color: var(--muted);
+    font-size: 19px; cursor: pointer; padding: 4px;
+    line-height: 1;
+  }
+  .gear-btn:hover { color: var(--text); }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    display: none; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    width: 340px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .modal h2 { font-size: 15px; font-weight: 600; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label {
+    font-size: 12px; color: var(--muted);
+    display: flex; justify-content: space-between;
+  }
+  .field .saved-tag { color: var(--ok); }
+  .field input {
+    background: #1c1c1e; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 10px; font-size: 13px;
+    font-family: ui-monospace, monospace;
+  }
+  .field input:focus { outline: 1px solid #0a84ff; border-color: #0a84ff; }
+  .field .hint { font-size: 11px; color: var(--muted); }
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;
+  }
+  .btn {
+    padding: 8px 16px; border-radius: 8px; border: none;
+    font-size: 13px; cursor: pointer;
+  }
+  .btn.primary { background: #0a84ff; color: #fff; }
+  .btn.secondary { background: var(--border); color: var(--text); }
+  .modal-status { font-size: 12px; min-height: 16px; color: var(--ok); }
+  .modal-status.error { color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
+  </div>
+
+  <h1>Notetaker</h1>
+
+  <div class="mic-row">
+    <div class="cap"><span>Microphone</span><span class="warn" id="micWarn"></span></div>
+    <select id="micSelect" disabled></select>
+  </div>
+
+  <div class="timer" id="timer">00:00</div>
+
+  <button class="record-btn" id="recBtn" disabled title="Record / Stop">
+    <span class="inner"></span>
+  </button>
+
+  <div class="stats">
+    <div class="row"><span class="label">Microphone</span><span class="val" id="micSize">—</span></div>
+    <div class="row"><span class="label">System audio</span><span class="val" id="sysSize">—</span></div>
+    <div class="row"><span class="label">State</span><span class="val" id="stateLbl">ready</span></div>
+  </div>
+
+  <div class="status" id="status">Click to start recording.</div>
+
+  <div class="overlay" id="settingsOverlay">
+    <div class="modal">
+      <h2>Settings — API keys</h2>
+
+      <div class="field">
+        <label>OpenAI API Key <span class="saved-tag" id="openaiSaved"></span></label>
+        <input type="password" id="openaiKey" placeholder="sk-...">
+        <span class="hint">Used for transcription (Whisper) and generating notes.</span>
+      </div>
+
+      <div class="field">
+        <label>Notion Integration Token <span class="saved-tag" id="notionSaved"></span></label>
+        <input type="password" id="notionToken" placeholder="ntn_... or secret_...">
+        <span class="hint">Optional — only needed to save notes to Notion.</span>
+      </div>
+
+      <div class="field">
+        <label>Notion — parent page ID <span class="saved-tag" id="notionParentSaved"></span></label>
+        <input type="text" id="notionParent" placeholder="e.g. 1a2b3c4d5e6f...">
+        <span class="hint">The page/database where notes will be created.</span>
+      </div>
+
+      <div class="modal-status" id="modalStatus"></div>
+
+      <div class="modal-actions">
+        <button class="btn secondary" id="closeSettings">Close</button>
+        <button class="btn primary" id="saveSettings">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let recording = false;
+  let busy = false;
+
+  function fmtTime(s) {
+    s = Math.floor(s || 0);
+    const m = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${m}:${ss}`;
+  }
+  function fmtBytes(b) {
+    if (!b) return "—";
+    const mb = b / (1024 * 1024);
+    if (mb >= 1) return mb.toFixed(1) + " MB";
+    return (b / 1024).toFixed(0) + " KB";
+  }
+  function setStatus(msg, cls = "") {
+    const el = $("status");
+    el.className = "status " + cls;
+    el.innerHTML = msg;
+  }
+
+  const STATE_LABELS = {
+    idle: "ready", recording: "● recording", mixing: "mixing…",
+    mixed: "mixed", transcribing: "transcribing…",
+    summarizing: "notes…", syncing_notion: "sending to Notion…",
+    done: "saved", error: "error",
+  };
+
+  // Called from Python (evaluate_js) with the current session state.
+  window.onStatus = function (data) {
+    $("stateLbl").textContent = STATE_LABELS[data.state] || data.state;
+    if (data.elapsed != null) $("timer").textContent = fmtTime(data.elapsed);
+    if (data.mic_bytes != null) $("micSize").textContent = fmtBytes(data.mic_bytes);
+    if (data.system_bytes != null) $("sysSize").textContent = fmtBytes(data.system_bytes);
+
+    const folderLink = data.folder
+      ? ` — <a class="link" onclick="window.pywebview.api.open_folder()">show in Finder</a>`
+      : "";
+
+    if (data.state === "mixing") {
+      setStatus("Mixing tracks and encoding MP3…");
+    } else if (data.state === "mixed") {
+      setStatus("Recording saved. Sending for transcription…");
+    } else if (data.state === "transcribing") {
+      const chunk = data.total > 1 ? ` (chunk ${data.index}/${data.total})` : "";
+      setStatus(`Transcribing with OpenAI Whisper…${chunk}`);
+    } else if (data.state === "summarizing") {
+      setStatus("Generating notes (GPT)…");
+    } else if (data.state === "syncing_notion") {
+      setStatus("Sending notes to Notion…");
+    } else if (data.state === "done") {
+      if (data.no_key) {
+        setStatus(`Recording saved (no transcription — missing OpenAI key in ⚙)${folderLink}`, "ok");
+      } else {
+        const title = data.title ? `"${data.title}" — ` : "";
+        const notionLink = data.notion_url
+          ? ` — <a class="link" onclick="window.pywebview.api.open_url('${data.notion_url}')">open in Notion</a>`
+          : data.notion_error
+            ? ` (Notion error: ${data.notion_error})`
+            : "";
+        setStatus(`${title}Notes ready${folderLink}${notionLink}`, "ok");
+      }
+    } else if (data.state === "error") {
+      setStatus("Error: " + (data.error || "unknown"), "error");
+    }
+  };
+
+  async function loadDevices() {
+    let devs = [];
+    try { devs = await window.pywebview.api.list_devices(); } catch (e) {}
+    const sel = $("micSelect");
+    sel.innerHTML = "";
+    devs.forEach((d) => {
+      const o = document.createElement("option");
+      o.value = d.index;
+      o.textContent = `${d.name} — ${Math.round(d.samplerate / 1000)} kHz`
+        + (d.bt ? "  ⚠︎" : "");
+      o.dataset.bt = d.bt ? "1" : "";
+      sel.appendChild(o);
+    });
+    // Skip Bluetooth by default (HFP degrades quality) — pick the system
+    // default microphone, or the first wired one if the default is Bluetooth.
+    const nonBtDefault = devs.find((d) => d.default && !d.bt);
+    const firstNonBt = devs.find((d) => !d.bt);
+    const target = nonBtDefault || firstNonBt || devs[0];
+    if (target) sel.value = String(target.index);
+    sel.disabled = false;
+    updateMicWarn();
+  }
+  function updateMicWarn() {
+    const opt = $("micSelect").selectedOptions[0];
+    const bt = opt && opt.dataset.bt === "1";
+    $("micWarn").textContent = bt
+      ? "Bluetooth — lower quality, pick a built-in microphone"
+      : "";
+  }
+
+  async function startRec() {
+    busy = true; $("recBtn").disabled = true; $("micSelect").disabled = true;
+    setStatus("Starting recording…");
+    const raw = $("micSelect").value;
+    const dev = raw === "" ? null : parseInt(raw, 10);
+    const res = await window.pywebview.api.start(Number.isNaN(dev) ? null : dev);
+    busy = false; $("recBtn").disabled = false;
+    if (!res.ok) {
+      $("micSelect").disabled = false;
+      setStatus("Failed to start: " + (res.error || "unknown error"), "error");
+      return;
+    }
+    recording = true;
+    document.body.classList.add("recording");
+    setStatus('<span class="dot">●</span> Recording…');
+  }
+
+  async function stopRec() {
+    busy = true; $("recBtn").disabled = true;
+    recording = false;
+    document.body.classList.remove("recording");
+    setStatus("Stopping…");
+    const res = await window.pywebview.api.stop();
+    busy = false; $("recBtn").disabled = false; $("micSelect").disabled = false;
+    if (!res.ok) {
+      setStatus("Error while saving: " + (res.error || ""), "error");
+    }
+  }
+
+  $("recBtn").addEventListener("click", () => {
+    if (busy) return;
+    recording ? stopRec() : startRec();
+  });
+  $("micSelect").addEventListener("change", updateMicWarn);
+
+  // --- Settings (API keys) ---
+
+  function setModalStatus(msg, isError = false) {
+    const el = $("modalStatus");
+    el.textContent = msg;
+    el.className = "modal-status" + (isError ? " error" : "");
+  }
+
+  async function refreshKeyStatus() {
+    let st = {};
+    try { st = await window.pywebview.api.get_key_status(); } catch (e) {}
+    $("openaiSaved").textContent = st.openai_set ? "✓ saved" : "";
+    $("notionSaved").textContent = st.notion_set ? "✓ saved" : "";
+    $("notionParentSaved").textContent = st.notion_parent_set ? "✓ saved" : "";
+  }
+
+  async function openSettings() {
+    $("openaiKey").value = "";
+    $("notionToken").value = "";
+    $("notionParent").value = "";
+    setModalStatus("");
+    await refreshKeyStatus();
+    $("settingsOverlay").classList.add("open");
+  }
+  function closeSettingsModal() {
+    $("settingsOverlay").classList.remove("open");
+  }
+
+  $("gearBtn").addEventListener("click", openSettings);
+  $("closeSettings").addEventListener("click", closeSettingsModal);
+  $("settingsOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "settingsOverlay") closeSettingsModal();
+  });
+
+  $("saveSettings").addEventListener("click", async () => {
+    const openai = $("openaiKey").value.trim();
+    const notion = $("notionToken").value.trim();
+    const parent = $("notionParent").value.trim();
+    if (!openai && !notion && !parent) {
+      setModalStatus("Enter at least one value.", true);
+      return;
+    }
+    setModalStatus("Saving…");
+    const res = await window.pywebview.api.save_keys(openai, notion, parent);
+    if (res.ok) {
+      setModalStatus("Saved.");
+      $("openaiKey").value = "";
+      $("notionToken").value = "";
+      $("notionParent").value = "";
+      await refreshKeyStatus();
+    } else {
+      setModalStatus("Save failed: " + (res.error || ""), true);
+    }
+  });
+
+  // Enable the button and load microphones once the pywebview bridge is ready.
+  window.addEventListener("pywebviewready", async () => {
+    $("recBtn").disabled = false;
+    await loadDevices();
+    setStatus("Click to start recording.");
+  });
+</script>
+</body>
+</html>

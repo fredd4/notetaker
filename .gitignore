@@ -1,0 +1,12 @@
+.venv/
+build/
+dist/
+__pycache__/
+*.pyc
+.env
+config.json
+recordings/
+*.wav
+*.mp3
+*.log
+.DS_Store
