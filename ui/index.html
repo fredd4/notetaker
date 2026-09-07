@@ -14,6 +14,7 @@
     --accent-dim: #5c2320;
     --ok: #30d158;
     --border: #3a3a3c;
+    --warn: #ffd60a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -100,127 +101,20 @@
   }
   .link:hover { text-decoration: underline; }
 
-  .mini-warn {
-    width: 100%;
-    font-size: 11px;
-    color: #ffd60a;
-    background: rgba(255, 214, 10, 0.1);
-    border: 1px solid rgba(255, 214, 10, 0.3);
-    border-radius: 8px;
-    padding: 7px 10px;
+  /* Subtle text-link, used for card actions and settings diagnostics. */
+  .text-link {
+    background: none; border: none; padding: 0; margin: 0;
+    color: var(--muted); font-size: 11.5px; cursor: pointer;
+    text-decoration: none; font-family: inherit;
   }
+  .text-link:hover { color: var(--text); text-decoration: underline; }
 
-  .error-panel {
-    width: 100%;
-    box-sizing: border-box;
-    border-radius: 12px;
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    border: 1px solid var(--accent);
-    background: rgba(255, 69, 58, 0.12);
-  }
-  /* `display: flex` above is an author rule and outranks the UA
-     stylesheet's `[hidden] { display: none }` regardless of selector
-     specificity — without this override, panels marked `hidden` would
-     still render. Same reasoning applies to .log-panel below. */
-  .error-panel[hidden], .log-panel[hidden] { display: none; }
-  .error-panel.warning {
-    border-color: #ffd60a;
-    background: rgba(255, 214, 10, 0.12);
-  }
-  .error-panel .ep-head {
-    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
-  }
-  .error-panel .ep-title {
-    font-size: 13px; font-weight: 600; color: var(--accent);
-  }
-  .error-panel.warning .ep-title { color: #ffd60a; }
-  .error-panel .ep-close {
-    background: none; border: none; color: var(--muted); cursor: pointer;
-    font-size: 15px; line-height: 1; padding: 0 2px; flex-shrink: 0;
-  }
-  .error-panel .ep-close:hover { color: var(--text); }
-  .error-panel .ep-message {
-    font-family: ui-monospace, monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: var(--text);
-    -webkit-user-select: text;
-    user-select: text;
-    max-height: 160px;
-    overflow-y: auto;
-  }
-  .error-panel .ep-path {
-    font-size: 11px; color: var(--muted);
-    font-family: ui-monospace, monospace;
-    word-break: break-all;
-    -webkit-user-select: text;
-    user-select: text;
-  }
-  .error-panel .ep-actions {
-    display: flex; flex-wrap: wrap; gap: 8px;
-  }
-  .error-panel .ep-btn {
-    padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border);
-    background: var(--panel); color: var(--text);
-    font-size: 11px; cursor: pointer;
-  }
-  .error-panel .ep-btn:hover { border-color: var(--muted); }
-
-  .logs-link {
-    color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: none;
-    align-self: center; margin-right: auto;
-  }
-  .logs-link:hover { color: var(--text); text-decoration: underline; }
-
-  .log-panel {
-    width: 100%;
-    box-sizing: border-box;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .log-panel .lp-head {
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  }
-  .log-panel .lp-title {
-    font-size: 11px; font-weight: 600; color: var(--muted);
-    text-transform: uppercase; letter-spacing: .3px; margin-right: auto;
-  }
-  .log-panel select.level-select {
-    width: auto; font-size: 11px; padding: 5px 8px;
-  }
-  .log-box {
-    width: 100%;
-    box-sizing: border-box;
-    max-height: 40vh;
-    overflow-y: auto;
-    background: #101012;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-family: ui-monospace, monospace;
-    font-size: 10.5px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #d0d0d5;
-    -webkit-user-select: text;
-    user-select: text;
-  }
   .mic-row { width: 100%; display: flex; flex-direction: column; gap: 6px; }
   .mic-row .cap {
     font-size: 11px; color: var(--muted);
     display: flex; justify-content: space-between; gap: 8px;
   }
-  .warn { color: #ffd60a; text-align: right; }
+  .warn { color: var(--warn); text-align: right; }
   select {
     width: 100%;
     background: var(--panel); color: var(--text);
@@ -230,9 +124,136 @@
   }
   select:disabled { opacity: .5; cursor: default; }
 
+  /* --- Notice card (error / warning) --- */
+  .notice-card {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 10px 12px;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+  }
+  /* Author rules only ever apply through `:not([hidden])` so the UA's
+     `[hidden] { display: none }` is never overridden — a card marked
+     hidden always stays out of the layout. Same pattern below for the
+     log overlay. */
+  .notice-card:not([hidden]) { display: flex; }
+  .notice-card.warning { border-left-color: var(--warn); }
+  .notice-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  }
+  .notice-title {
+    font-size: 12.5px; font-weight: 600; color: var(--accent);
+    padding-right: 14px;
+  }
+  .notice-card.warning .notice-title { color: var(--warn); }
+  .notice-close {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+    position: absolute; top: 8px; right: 10px;
+  }
+  .notice-close:hover { color: var(--text); }
+  .notice-message {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .notice-actions {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    font-size: 11.5px;
+  }
+  .notice-actions .text-link:not(:last-child)::after {
+    content: " \00b7 ";
+    color: var(--muted);
+    margin-left: 3px;
+  }
+  .notice-details {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+    background: #101012;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    max-height: 160px;
+    overflow-y: auto;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .notice-details:not([hidden]) { display: block; }
+
+  /* --- Log viewer modal --- */
+  .log-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    align-items: center; justify-content: center;
+    z-index: 20;
+  }
+  .log-overlay:not([hidden]) { display: flex; }
+  .log-sheet {
+    width: 90%;
+    max-height: 70%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .log-head {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .log-title {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .3px; margin-right: auto;
+  }
+  .log-head select.level-select {
+    width: auto; font-size: 11px; padding: 5px 8px;
+  }
+  .log-btn {
+    padding: 5px 9px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text);
+    font-size: 11px; cursor: pointer;
+  }
+  .log-btn:hover { border-color: var(--muted); }
+  .log-close {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 15px; line-height: 1; padding: 0 2px;
+  }
+  .log-close:hover { color: var(--text); }
+  .log-box {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    background: #101012;
+    padding: 10px 14px;
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #d0d0d5;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .log-line-warn { color: var(--warn); background: rgba(255, 214, 10, 0.07); }
+  .log-line-error { color: var(--accent); background: rgba(255, 69, 58, 0.09); }
+
   .topbar {
-    width: calc(100% - 40px); display: flex; align-items: center; justify-content: space-between;
-    position: absolute; top: 16px; left: 20px; right: 20px;
+    width: 100%; display: flex; justify-content: flex-end;
+    position: absolute; top: 16px; right: 20px;
   }
   .gear-btn {
     background: none; border: none; color: var(--muted);
@@ -279,32 +300,31 @@
   .btn.secondary { background: var(--border); color: var(--text); }
   .modal-status { font-size: 12px; min-height: 16px; color: var(--ok); }
   .modal-status.error { color: var(--accent); }
+
+  .diag-row {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding-top: 12px;
+    margin-top: 2px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .diag-row .diag-label {
+    color: var(--muted); margin-right: 6px;
+    text-transform: uppercase; letter-spacing: .3px; font-size: 10px;
+  }
+  .diag-row .text-link:not(:last-child)::after {
+    content: " \00b7 ";
+    color: var(--muted);
+    margin-left: 3px;
+  }
 </style>
 </head>
 <body>
   <div class="topbar">
-    <a class="logs-link" id="logsLink" title="View log file">Logs</a>
     <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
   </div>
 
   <h1>Notetaker</h1>
-
-  <div class="error-panel" id="errorPanel" hidden>
-    <div class="ep-head">
-      <div class="ep-title" id="epTitle">Error</div>
-      <button class="ep-close" id="epClose" title="Dismiss">✕</button>
-    </div>
-    <div class="ep-message" id="epMessage"></div>
-    <div class="ep-path" id="epPath" hidden></div>
-    <div class="ep-actions">
-      <button class="ep-btn" id="epOpenLog">Open log</button>
-      <button class="ep-btn" id="epShowLogs">Show logs</button>
-      <button class="ep-btn" id="epShowFinder">Show in Finder</button>
-      <button class="ep-btn" id="epCopy">Copy details</button>
-    </div>
-  </div>
-
-  <div class="mini-warn" id="miniWarn" hidden></div>
 
   <div class="mic-row">
     <div class="cap"><span>Microphone</span><span class="warn" id="micWarn"></span></div>
@@ -325,18 +345,35 @@
 
   <div class="status" id="status">Click to start recording.</div>
 
-  <div class="log-panel" id="logPanel" hidden>
-    <div class="lp-head">
-      <span class="lp-title">Log</span>
-      <select class="level-select" id="logLevelSelect">
-        <option value="INFO">All</option>
-        <option value="WARNING">Warnings+Errors</option>
-      </select>
-      <button class="ep-btn" id="logRefresh">Refresh</button>
-      <button class="ep-btn" id="logOpenFile">Open log file</button>
-      <button class="ep-btn" id="logClose">Close</button>
+  <div class="notice-card" id="noticeCard" hidden>
+    <div class="notice-head">
+      <div class="notice-title" id="noticeTitle">Error</div>
+      <button class="notice-close" id="noticeClose" title="Dismiss">✕</button>
     </div>
-    <div class="log-box" id="logBox">Loading…</div>
+    <div class="notice-message" id="noticeMessage"></div>
+    <div class="notice-actions">
+      <button class="text-link" id="noticeDetailsBtn">Details</button>
+      <button class="text-link" id="noticeLogs">Logs</button>
+      <button class="text-link" id="noticeFinder" hidden>Show in Finder</button>
+      <button class="text-link" id="noticeCopy">Copy</button>
+    </div>
+    <div class="notice-details" id="noticeDetailsBlock" hidden></div>
+  </div>
+
+  <div class="log-overlay" id="logOverlay" hidden>
+    <div class="log-sheet">
+      <div class="log-head">
+        <span class="log-title">Log</span>
+        <select class="level-select" id="logLevelSelect">
+          <option value="INFO">All</option>
+          <option value="WARNING">Warnings & errors</option>
+        </select>
+        <button class="log-btn" id="logRefresh">Refresh</button>
+        <button class="log-btn" id="logOpenFile">Open file</button>
+        <button class="log-close" id="logClose" title="Close">✕</button>
+      </div>
+      <div class="log-box" id="logBox">Loading…</div>
+    </div>
   </div>
 
   <div class="overlay" id="settingsOverlay">
@@ -367,6 +404,12 @@
         <button class="btn secondary" id="closeSettings">Close</button>
         <button class="btn primary" id="saveSettings">Save</button>
       </div>
+
+      <div class="diag-row">
+        <span class="diag-label">Diagnostics</span>
+        <button class="text-link" id="diagViewLogs">View logs</button>
+        <button class="text-link" id="diagOpenLog">Open log file</button>
+      </div>
     </div>
   </div>
 
@@ -392,48 +435,58 @@
     el.className = "status " + cls;
     el.innerHTML = msg;
   }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
 
-  // --- Error panel ---
+  // --- Notice card (error / warning) ---
 
-  let currentErrorDetails = null; // { title, message, folder, timestamp }
+  let currentNoticeDetails = null; // { title, message, folder, timestamp }
 
-  function showErrorPanel({ title, message, folder, warning = false }) {
-    currentErrorDetails = {
+  function showNoticeCard({ title, message, folder, warning = false }) {
+    currentNoticeDetails = {
       title: title || "",
       message: message || "",
       folder: folder || "",
       timestamp: new Date().toISOString(),
     };
-    $("epTitle").textContent = title || (warning ? "Warning" : "Error");
-    $("epMessage").textContent = message || "";
-    if (folder) {
-      $("epPath").textContent = "Folder: " + folder;
-      $("epPath").hidden = false;
-    } else {
-      $("epPath").hidden = true;
-    }
-    $("epShowFinder").hidden = !folder;
-    $("errorPanel").classList.toggle("warning", !!warning);
-    $("errorPanel").hidden = false;
+    $("noticeTitle").textContent = title || (warning ? "Warning" : "Error");
+    $("noticeMessage").textContent = message || "";
+    $("noticeFinder").hidden = !folder;
+    $("noticeCard").classList.toggle("warning", !!warning);
+
+    const details = $("noticeDetailsBlock");
+    details.hidden = true;
+    $("noticeDetailsBtn").textContent = "Details";
+    details.textContent = [
+      message || "",
+      folder ? "Folder: " + folder : "",
+    ].filter(Boolean).join("\n");
+
+    $("noticeCard").hidden = false;
   }
 
-  function hideErrorPanel() {
-    $("errorPanel").hidden = true;
-    currentErrorDetails = null;
+  function hideNoticeCard() {
+    $("noticeCard").hidden = true;
+    currentNoticeDetails = null;
   }
 
-  function hideMiniWarn() {
-    $("miniWarn").hidden = true;
-    $("miniWarn").textContent = "";
+  function toggleNoticeDetails() {
+    const details = $("noticeDetailsBlock");
+    details.hidden = !details.hidden;
+    $("noticeDetailsBtn").textContent = details.hidden ? "Details" : "Hide details";
   }
 
-  async function copyErrorDetails() {
-    if (!currentErrorDetails) return;
+  async function copyNoticeDetails() {
+    if (!currentNoticeDetails) return;
     const text = [
-      currentErrorDetails.title,
-      currentErrorDetails.message,
-      currentErrorDetails.folder ? "Folder: " + currentErrorDetails.folder : "",
-      "Time: " + currentErrorDetails.timestamp,
+      currentNoticeDetails.title,
+      currentNoticeDetails.message,
+      currentNoticeDetails.folder ? "Folder: " + currentNoticeDetails.folder : "",
+      "Time: " + currentNoticeDetails.timestamp,
     ].filter(Boolean).join("\n");
     try {
       await navigator.clipboard.writeText(text);
@@ -458,11 +511,12 @@
 
   // --- Log viewer ---
 
-  function toggleLogPanel(open) {
-    const panel = $("logPanel");
-    const shouldOpen = open != null ? open : panel.hidden;
-    panel.hidden = !shouldOpen;
-    if (shouldOpen) refreshLog();
+  function openLogOverlay() {
+    $("logOverlay").hidden = false;
+    refreshLog();
+  }
+  function closeLogOverlay() {
+    $("logOverlay").hidden = true;
   }
 
   async function refreshLog() {
@@ -483,7 +537,16 @@
       $("logBox").textContent = "No log file yet at " + res.path;
       return;
     }
-    $("logBox").textContent = res.lines && res.lines.length ? res.lines.join("\n") : "(no matching log lines)";
+    if (!res.lines || !res.lines.length) {
+      $("logBox").textContent = "(no matching log lines)";
+      return;
+    }
+    $("logBox").innerHTML = res.lines.map((line) => {
+      let cls = "log-line";
+      if (/\bERROR\b/.test(line)) cls += " log-line-error";
+      else if (/\bWARNING\b/.test(line)) cls += " log-line-warn";
+      return `<div class="${cls}">${escapeHtml(line)}</div>`;
+    }).join("");
     $("logBox").scrollTop = $("logBox").scrollHeight;
   }
 
@@ -517,8 +580,12 @@
     } else if (data.state === "summarizing") {
       setStatus("Generating notes (GPT)…");
       if (data.warnings && data.warnings.length) {
-        $("miniWarn").textContent = "Note: " + data.warnings.join("; ");
-        $("miniWarn").hidden = false;
+        showNoticeCard({
+          title: "Notes generated with warnings",
+          message: data.warnings.join("; "),
+          folder: data.folder,
+          warning: true,
+        });
       }
     } else if (data.state === "syncing_notion") {
       setStatus("Sending notes to Notion…");
@@ -535,7 +602,7 @@
         setStatus(`${title}Notes ready${folderLink}${notionLink}`, "ok");
       }
       if (data.notion_error) {
-        showErrorPanel({
+        showNoticeCard({
           title: "Notion sync failed — notes saved locally",
           message: "Your notes are safe locally on disk. Notion sync failed: " + data.notion_error,
           folder: data.folder,
@@ -543,7 +610,7 @@
         });
       }
       if (data.cleanup_error) {
-        showErrorPanel({
+        showNoticeCard({
           title: "Cleanup incomplete — notes are in Notion",
           message: data.cleanup_error,
           folder: data.folder,
@@ -552,7 +619,7 @@
       }
     } else if (data.state === "error") {
       setStatus("Error: " + (data.error || "unknown"), "error");
-      showErrorPanel({
+      showNoticeCard({
         title: "Recording failed",
         message: data.error || "Unknown error",
         folder: data.folder,
@@ -598,8 +665,7 @@
 
   async function startRec() {
     // A new recording supersedes whatever error/warning was showing before.
-    hideErrorPanel();
-    hideMiniWarn();
+    hideNoticeCard();
     busy = true; $("recBtn").disabled = true; $("micSelect").disabled = true;
     setStatus("Starting recording…");
     const raw = $("micSelect").value;
@@ -609,7 +675,7 @@
     if (!res.ok) {
       $("micSelect").disabled = false;
       setStatus("Failed to start: " + (res.error || "unknown error"), "error");
-      showErrorPanel({
+      showNoticeCard({
         title: "Failed to start recording",
         message: res.error || "Unknown error",
         folder: null,
@@ -640,19 +706,24 @@
   });
   $("micSelect").addEventListener("change", updateMicWarn);
 
-  // --- Error panel wiring ---
-  $("epClose").addEventListener("click", hideErrorPanel);
-  $("epOpenLog").addEventListener("click", () => window.pywebview.api.open_log());
-  $("epShowLogs").addEventListener("click", () => toggleLogPanel(true));
-  $("epShowFinder").addEventListener("click", () => window.pywebview.api.open_folder());
-  $("epCopy").addEventListener("click", copyErrorDetails);
+  // --- Notice card wiring ---
+  $("noticeClose").addEventListener("click", hideNoticeCard);
+  $("noticeDetailsBtn").addEventListener("click", toggleNoticeDetails);
+  $("noticeLogs").addEventListener("click", openLogOverlay);
+  $("noticeFinder").addEventListener("click", () => window.pywebview.api.open_folder());
+  $("noticeCopy").addEventListener("click", copyNoticeDetails);
 
   // --- Log viewer wiring ---
-  $("logsLink").addEventListener("click", () => toggleLogPanel());
   $("logRefresh").addEventListener("click", refreshLog);
   $("logOpenFile").addEventListener("click", () => window.pywebview.api.open_log());
   $("logLevelSelect").addEventListener("change", refreshLog);
-  $("logClose").addEventListener("click", () => toggleLogPanel(false));
+  $("logClose").addEventListener("click", closeLogOverlay);
+  $("logOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "logOverlay") closeLogOverlay();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("logOverlay").hidden) closeLogOverlay();
+  });
 
   // --- Settings (API keys) ---
 
@@ -708,6 +779,13 @@
       setModalStatus("Save failed: " + (res.error || ""), true);
     }
   });
+
+  // --- Diagnostics (inside Settings) ---
+  $("diagViewLogs").addEventListener("click", () => {
+    closeSettingsModal();
+    openLogOverlay();
+  });
+  $("diagOpenLog").addEventListener("click", () => window.pywebview.api.open_log());
 
   // Enable the button and load microphones once the pywebview bridge is ready.
   window.addEventListener("pywebviewready", async () => {

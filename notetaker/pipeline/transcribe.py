@@ -45,6 +45,25 @@ Quality notes:
     collapse_repetition_loops() before being saved, to strip Whisper
     "hallucination loops" (the model getting stuck repeating the same
     sentence, short sentence block, or filler phrase over and over).
+
+Silence notes (added after a 116-minute recording where the conversation
+ended early and the rest was dead air): Whisper is well known to hallucinate
+fixed stock phrases (subtitle-credit boilerplate, "thanks for watching",
+etc.) when fed silence, and it does so fresh each chunk — so a phrase
+appearing once or twice per chunk survives collapse_repetition_loops()
+(which only catches repeats *within* one chunk) and pollutes the final
+transcript once per chunk. Two defenses, both applied per chunk before/after
+the API call:
+  1. Silence is detected BEFORE calling the API (ffmpeg `volumedetect`) and
+     the call is skipped entirely for a silent chunk — cheaper and immune to
+     whatever Whisper would have hallucinated for it.
+  2. A known-hallucination filter strips well-known stock phrases (that
+     silence detection didn't catch, e.g. near-silence with a little noise)
+     from a chunk's transcript after the API call.
+  3. A final global collapse_repetition_loops() pass runs on the fully
+     joined transcript, to catch repeats that span a chunk boundary (e.g.
+     the same hallucinated sentence recurring once per chunk across many
+     chunks) which the per-chunk pass cannot see.
 """
 
 from __future__ import annotations
@@ -72,6 +91,16 @@ RETRY_BACKOFF_SECONDS = [5, 15, 45]  # one entry per retry (attempt 1 -> 2, 2 ->
 # How much of the previous chunk's transcript to feed the next chunk as
 # `prompt=` context, for continuity across the cut point.
 PROMPT_CONTEXT_CHARS = 200
+
+# --- Silence detection -----------------------------------------------------
+# A chunk is treated as silent (and never sent to the API) when BOTH its
+# mean and max volume (as reported by ffmpeg's volumedetect filter) are
+# below these thresholds. Chosen so genuine quiet speech (which still has a
+# max_volume well above -30 dB on syllable peaks) is never misclassified,
+# while true dead air / room tone (mean and max both near ffmpeg's -91 dB
+# digital-silence floor) is caught reliably.
+SILENCE_MEAN_DB = -50.0
+SILENCE_MAX_DB = -30.0
 
 # --- Repetition-loop collapsing -------------------------------------------
 # Two conservative passes, both touching ONLY strictly consecutive repeats
@@ -173,6 +202,52 @@ def _enforce_size_limit(
     return result
 
 
+_VOLUMEDETECT_MEAN_RE = re.compile(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB")
+_VOLUMEDETECT_MAX_RE = re.compile(r"max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB")
+
+
+def _chunk_is_silent(path: Path) -> bool:
+    """Runs `ffmpeg -i path -af volumedetect -f null -` and inspects the
+    mean_volume/max_volume it reports (on stderr) to decide whether `path`
+    is effectively silent (dead air), per SILENCE_MEAN_DB/SILENCE_MAX_DB.
+
+    Any failure to run ffmpeg or to parse its output is treated as "not
+    silent" (log a WARNING and let the caller proceed to transcribe
+    normally) rather than risking a false positive that would silently drop
+    real content.
+    """
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-i", str(path), "-af", "volumedetect", "-f", "null", "-"],
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        logger.warning(
+            "Silence detection: failed to run ffmpeg for %s, proceeding to "
+            "transcribe", path.name, exc_info=True,
+        )
+        return False
+
+    mean_match = _VOLUMEDETECT_MEAN_RE.search(proc.stderr)
+    max_match = _VOLUMEDETECT_MAX_RE.search(proc.stderr)
+    if not mean_match or not max_match:
+        logger.warning(
+            "Silence detection: could not parse ffmpeg volumedetect output "
+            "for %s (rc=%d), proceeding to transcribe", path.name, proc.returncode,
+        )
+        return False
+
+    mean_db = float(mean_match.group(1))
+    max_db = float(max_match.group(1))
+    is_silent = mean_db < SILENCE_MEAN_DB and max_db < SILENCE_MAX_DB
+    logger.info(
+        "Silence detection for %s: mean_volume=%.1fdB max_volume=%.1fdB -> %s",
+        path.name, mean_db, max_db, "silent" if is_silent else "not silent",
+    )
+    return is_silent
+
+
 def _normalize(s: str) -> str:
     """lowercase, strip punctuation entirely, collapse whitespace."""
     s = s.lower()
@@ -266,6 +341,81 @@ def collapse_repetition_loops(text: str) -> tuple[str, int]:
             removed_count, sentence_removed, phrase_removed,
         )
     return clean_text, removed_count
+
+
+# --- Known-hallucination filtering -----------------------------------------
+# Well-known fixed phrases Whisper produces when fed silence or near-silence
+# audio. Matched whole-sentence (via re.fullmatch against a stripped
+# sentence), case-insensitive, with an optional trailing '.'/'!' since
+# sentence splitting keeps the terminator attached. Using fullmatch (rather
+# than search) is deliberate: it means these never fire on a real sentence
+# that merely *mentions* one of these phrases in passing.
+HALLUCINATION_PATTERNS = [
+    # Amara.org subtitle-credit boilerplate (PL/EN/DE variants).
+    re.compile(r"napisy (stworzone|wykonane) przez społeczność amara\.org[.!]?", re.IGNORECASE),
+    re.compile(r"napisy przez społeczność amara\.org[.!]?", re.IGNORECASE),
+    re.compile(r"subtitles by the amara\.org community[.!]?", re.IGNORECASE),
+    re.compile(r"untertitel(ung)? (im auftrag (der|von)|durch) (die )?amara\.org(-community)?[.!]?", re.IGNORECASE),
+    # "Thanks/thank you for watching" (video-outro boilerplate).
+    re.compile(r"thanks? (you )?for watching[.!]?", re.IGNORECASE),
+    # "Subscribe to the channel" / Polish "Zasubskrybuj"/"Subskrybuj".
+    re.compile(r"subscribe to (the |my )?channel[.!]?", re.IGNORECASE),
+    re.compile(r"(za)?subskrybuj( kanał)?[.!]?", re.IGNORECASE),
+]
+
+# "Dziękuję za uwagę" ("thank you for your attention") is a completely
+# normal closing line in real Polish presentations/meetings, so it must NOT
+# be stripped when it appears as one sentence among other real content.
+# Whisper's silence-hallucination version of it is when it is the ONLY
+# thing transcribed for a chunk -- so this is checked against the chunk's
+# *entire* text, never per-sentence.
+WHOLE_CHUNK_HALLUCINATION_PATTERNS = [
+    re.compile(r"dziękuję za uwagę[.!]?", re.IGNORECASE),
+]
+
+
+def strip_known_hallucinations(text: str) -> tuple[str, int]:
+    """Strips well-known Whisper silence-hallucination phrases from a
+    chunk's transcript (see HALLUCINATION_PATTERNS / module docstring).
+
+    Pure function, no I/O. Returns (clean_text, removed_count):
+      - If the chunk's entire (stripped) text matches one of the
+        whole-chunk-only patterns, or if removing per-sentence matches
+        leaves nothing but whitespace, returns ("", removed_count>=1).
+      - Otherwise removes only whole-sentence matches of
+        HALLUCINATION_PATTERNS and returns the rejoined remainder.
+      - When nothing matches, returns (text, 0) with text unchanged
+        (verbatim, including original whitespace).
+    """
+    if not text or not text.strip():
+        return text, 0
+
+    stripped_whole = text.strip()
+    for pat in WHOLE_CHUNK_HALLUCINATION_PATTERNS:
+        if pat.fullmatch(stripped_whole):
+            logger.info(
+                "Hallucination filter: entire chunk matched known artifact "
+                "%r, discarding", pat.pattern,
+            )
+            return "", 1
+
+    sentences = _split_sentences(text)
+    kept: list[str] = []
+    removed = 0
+    for s in sentences:
+        s_stripped = s.strip()
+        if s_stripped and any(pat.fullmatch(s_stripped) for pat in HALLUCINATION_PATTERNS):
+            removed += 1
+            continue
+        kept.append(s)
+
+    if removed == 0:
+        return text, 0
+
+    clean_text = _WHITESPACE_RE.sub(" ", " ".join(kept)).strip()
+    if not clean_text:
+        return "", removed
+    return clean_text, removed
 
 
 def _transcribe_chunk_with_retry(
@@ -369,6 +519,17 @@ def transcribe(
                 chunk.unlink(missing_ok=True)
             continue
 
+        if _chunk_is_silent(chunk):
+            logger.info(
+                "Chunk %d/%d is silent, skipping API call: %s", i, total, chunk.name,
+            )
+            transcript_chunk_path.write_text("", encoding="utf-8")
+            parts.append("")
+            emit("chunk_skipped", index=i, total=total, reason="silent")
+            if chunk != mp3_path:
+                chunk.unlink(missing_ok=True)
+            continue
+
         emit("chunk_start", index=i, total=total)
         logger.info("Chunk %d/%d start: %s", i, total, chunk.name)
         t0 = time.time()
@@ -388,6 +549,13 @@ def transcribe(
                 "Chunk %d/%d: collapsed %d repeated segment(s)", i, total, removed,
             )
 
+        text, hallu_removed = strip_known_hallucinations(text)
+        if hallu_removed:
+            logger.info(
+                "Chunk %d/%d: removed %d known hallucination sentence(s)",
+                i, total, hallu_removed,
+            )
+
         transcript_chunk_path.write_text(text, encoding="utf-8")
         parts.append(text)
         emit("chunk_done", index=i, total=total, duration=round(elapsed, 1))
@@ -401,7 +569,20 @@ def transcribe(
         if chunk != mp3_path:
             chunk.unlink(missing_ok=True)
 
-    full_text = "\n\n".join(parts)
+    # Drop empty parts (silent/fully-hallucinated chunks) before joining so
+    # there are no runs of blank lines, then run collapse_repetition_loops
+    # once more on the fully joined text: the per-chunk pass above only
+    # catches repeats *within* one chunk, so a phrase (e.g. a hallucination
+    # that slipped past the per-chunk filters) recurring once per chunk
+    # across several chunks would otherwise survive into the final
+    # transcript.
+    full_text = "\n\n".join(p for p in parts if p and p.strip())
+    full_text, global_removed = collapse_repetition_loops(full_text)
+    if global_removed:
+        logger.warning(
+            "Global collapse: collapsed %d repeated segment(s) spanning "
+            "chunk boundaries", global_removed,
+        )
 
     # All chunks succeeded and the caller now persists the full transcript
     # itself (session.py writes transcript.txt right after this returns), so
