@@ -22,6 +22,9 @@ def list_input_devices() -> list[dict]:
             continue
         name = d["name"]
         bt = any(k in name.lower() for k in ("airpods", "bluetooth", "headset", "handsfree"))
+        # Continuity devices (iPhone/iPad mic) show up in the device list but
+        # are rarely what anyone actually wants as a fallback microphone.
+        external = any(k in name.lower() for k in ("iphone", "ipad", "continuity"))
         devices.append(
             {
                 "index": idx,
@@ -29,6 +32,7 @@ def list_input_devices() -> list[dict]:
                 "channels": d["max_input_channels"],
                 "samplerate": int(d["default_samplerate"]),
                 "bt": bt,
+                "external": external,
                 "default": idx == default_in,
             }
         )

@@ -6,6 +6,7 @@ Run:  ./.venv/bin/python -m notetaker.app
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import threading
@@ -16,9 +17,12 @@ import webview
 
 from . import ROOT, check_ffmpeg_installed, config, ensure_ffmpeg_on_path, fix_ssl_cert_env
 from .audio import list_input_devices
+from .log import setup_logging
 from .session import RecordingSession
 
 UI_FILE = ROOT / "ui" / "index.html"
+
+logger = logging.getLogger(__name__)
 
 
 class Api:
@@ -46,6 +50,7 @@ class Api:
             self.session = RecordingSession(mic_device=mic_device)
             self.session.start()
         except Exception as exc:  # missing permission, missing helper, etc.
+            logger.exception("Failed to start recording session")
             return {"ok": False, "error": str(exc)}
         self._start_polling()
         return {"ok": True}
@@ -59,6 +64,7 @@ class Api:
         try:
             path = self.session.stop()
         except Exception as exc:
+            logger.exception("Failed to stop/mix recording session")
             self._push({"state": "error", "error": str(exc)})
             return {"ok": False, "error": str(exc)}
 
@@ -90,6 +96,12 @@ class Api:
         notion_token: Optional[str],
         notion_parent: Optional[str],
     ) -> None:
+        # This runs on a background thread — an uncaught exception here
+        # would otherwise vanish silently (daemon threads don't print
+        # tracebacks anywhere the user would see, and nothing would ever
+        # update the UI out of "transcribing..."). session.process() already
+        # catches and reports its own errors, but this is a safety net for
+        # anything unexpected (e.g. a bug in on_event itself).
         def on_event(state: str, extra: dict) -> None:
             data = {"state": state, "folder": str(session.dir)}
             data.update(extra)
@@ -101,7 +113,15 @@ class Api:
                 data["notion_error"] = session.notion_error
             self._push(data)
 
-        session.process(api_key, notion_token, notion_parent, on_event=on_event)
+        try:
+            session.process(api_key, notion_token, notion_parent, on_event=on_event)
+        except Exception as exc:
+            logger.exception("Uncaught exception in pipeline thread for session %s", session.dir)
+            self._push({
+                "state": "error",
+                "folder": str(session.dir),
+                "error": f"Unexpected internal error: {exc}. See log file for details.",
+            })
 
     # --- settings / API keys ---
 
@@ -167,10 +187,12 @@ class Api:
             try:
                 self.window.evaluate_js(f"window.onStatus({json.dumps(data)})")
             except Exception:
-                pass
+                logger.debug("Failed to push status to webview (window closed?)", exc_info=True)
 
 
 def main() -> None:
+    setup_logging()
+    logger.info("Notetaker starting")
     ensure_ffmpeg_on_path()
     fix_ssl_cert_env()
     api = Api()

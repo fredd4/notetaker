@@ -255,7 +255,9 @@
     if (data.mic_bytes != null) $("micSize").textContent = fmtBytes(data.mic_bytes);
     if (data.system_bytes != null) $("sysSize").textContent = fmtBytes(data.system_bytes);
 
-    const folderLink = data.folder
+    // Once synced to Notion, the local session folder is deleted — only
+    // offer "show in Finder" while it still exists on disk.
+    const folderLink = data.folder && !data.notion_url
       ? ` — <a class="link" onclick="window.pywebview.api.open_folder()">show in Finder</a>`
       : "";
 
@@ -300,11 +302,16 @@
       o.dataset.bt = d.bt ? "1" : "";
       sel.appendChild(o);
     });
-    // Skip Bluetooth by default (HFP degrades quality) — pick the system
-    // default microphone, or the first wired one if the default is Bluetooth.
-    const nonBtDefault = devs.find((d) => d.default && !d.bt);
-    const firstNonBt = devs.find((d) => !d.bt);
-    const target = nonBtDefault || firstNonBt || devs[0];
+    // Honor whatever microphone is actually selected in the system — unless
+    // it's Bluetooth (HFP degrades quality), in which case fall back to a
+    // real built-in/wired mic rather than an arbitrary one (e.g. skip an
+    // iPhone Continuity microphone even if it's earlier in the device list).
+    const systemDefault = devs.find((d) => d.default);
+    const target =
+      (systemDefault && !systemDefault.bt && systemDefault) ||
+      devs.find((d) => !d.bt && !d.external) ||
+      devs.find((d) => !d.bt) ||
+      devs[0];
     if (target) sel.value = String(target.index);
     sel.disabled = false;
     updateMicWarn();
