@@ -30,6 +30,7 @@
     align-items: center;
     padding: 28px 24px;
     gap: 22px;
+    overflow-y: auto;
   }
   h1 {
     font-size: 15px;
@@ -46,6 +47,9 @@
   }
   .record-btn {
     width: 92px; height: 92px;
+    min-width: 92px; min-height: 92px;
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
     border-radius: 50%;
     border: 3px solid var(--border);
     background: var(--accent);
@@ -95,6 +99,122 @@
     color: #0a84ff; cursor: pointer; text-decoration: none;
   }
   .link:hover { text-decoration: underline; }
+
+  .mini-warn {
+    width: 100%;
+    font-size: 11px;
+    color: #ffd60a;
+    background: rgba(255, 214, 10, 0.1);
+    border: 1px solid rgba(255, 214, 10, 0.3);
+    border-radius: 8px;
+    padding: 7px 10px;
+  }
+
+  .error-panel {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 1px solid var(--accent);
+    background: rgba(255, 69, 58, 0.12);
+  }
+  /* `display: flex` above is an author rule and outranks the UA
+     stylesheet's `[hidden] { display: none }` regardless of selector
+     specificity — without this override, panels marked `hidden` would
+     still render. Same reasoning applies to .log-panel below. */
+  .error-panel[hidden], .log-panel[hidden] { display: none; }
+  .error-panel.warning {
+    border-color: #ffd60a;
+    background: rgba(255, 214, 10, 0.12);
+  }
+  .error-panel .ep-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  }
+  .error-panel .ep-title {
+    font-size: 13px; font-weight: 600; color: var(--accent);
+  }
+  .error-panel.warning .ep-title { color: #ffd60a; }
+  .error-panel .ep-close {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 15px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+  }
+  .error-panel .ep-close:hover { color: var(--text); }
+  .error-panel .ep-message {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+    -webkit-user-select: text;
+    user-select: text;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .error-panel .ep-path {
+    font-size: 11px; color: var(--muted);
+    font-family: ui-monospace, monospace;
+    word-break: break-all;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .error-panel .ep-actions {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .error-panel .ep-btn {
+    padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text);
+    font-size: 11px; cursor: pointer;
+  }
+  .error-panel .ep-btn:hover { border-color: var(--muted); }
+
+  .logs-link {
+    color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: none;
+    align-self: center; margin-right: auto;
+  }
+  .logs-link:hover { color: var(--text); text-decoration: underline; }
+
+  .log-panel {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .log-panel .lp-head {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+  .log-panel .lp-title {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .3px; margin-right: auto;
+  }
+  .log-panel select.level-select {
+    width: auto; font-size: 11px; padding: 5px 8px;
+  }
+  .log-box {
+    width: 100%;
+    box-sizing: border-box;
+    max-height: 40vh;
+    overflow-y: auto;
+    background: #101012;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #d0d0d5;
+    -webkit-user-select: text;
+    user-select: text;
+  }
   .mic-row { width: 100%; display: flex; flex-direction: column; gap: 6px; }
   .mic-row .cap {
     font-size: 11px; color: var(--muted);
@@ -111,8 +231,8 @@
   select:disabled { opacity: .5; cursor: default; }
 
   .topbar {
-    width: 100%; display: flex; justify-content: flex-end;
-    position: absolute; top: 16px; right: 20px;
+    width: calc(100% - 40px); display: flex; align-items: center; justify-content: space-between;
+    position: absolute; top: 16px; left: 20px; right: 20px;
   }
   .gear-btn {
     background: none; border: none; color: var(--muted);
@@ -163,10 +283,28 @@
 </head>
 <body>
   <div class="topbar">
+    <a class="logs-link" id="logsLink" title="View log file">Logs</a>
     <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
   </div>
 
   <h1>Notetaker</h1>
+
+  <div class="error-panel" id="errorPanel" hidden>
+    <div class="ep-head">
+      <div class="ep-title" id="epTitle">Error</div>
+      <button class="ep-close" id="epClose" title="Dismiss">✕</button>
+    </div>
+    <div class="ep-message" id="epMessage"></div>
+    <div class="ep-path" id="epPath" hidden></div>
+    <div class="ep-actions">
+      <button class="ep-btn" id="epOpenLog">Open log</button>
+      <button class="ep-btn" id="epShowLogs">Show logs</button>
+      <button class="ep-btn" id="epShowFinder">Show in Finder</button>
+      <button class="ep-btn" id="epCopy">Copy details</button>
+    </div>
+  </div>
+
+  <div class="mini-warn" id="miniWarn" hidden></div>
 
   <div class="mic-row">
     <div class="cap"><span>Microphone</span><span class="warn" id="micWarn"></span></div>
@@ -186,6 +324,20 @@
   </div>
 
   <div class="status" id="status">Click to start recording.</div>
+
+  <div class="log-panel" id="logPanel" hidden>
+    <div class="lp-head">
+      <span class="lp-title">Log</span>
+      <select class="level-select" id="logLevelSelect">
+        <option value="INFO">All</option>
+        <option value="WARNING">Warnings+Errors</option>
+      </select>
+      <button class="ep-btn" id="logRefresh">Refresh</button>
+      <button class="ep-btn" id="logOpenFile">Open log file</button>
+      <button class="ep-btn" id="logClose">Close</button>
+    </div>
+    <div class="log-box" id="logBox">Loading…</div>
+  </div>
 
   <div class="overlay" id="settingsOverlay">
     <div class="modal">
@@ -241,6 +393,100 @@
     el.innerHTML = msg;
   }
 
+  // --- Error panel ---
+
+  let currentErrorDetails = null; // { title, message, folder, timestamp }
+
+  function showErrorPanel({ title, message, folder, warning = false }) {
+    currentErrorDetails = {
+      title: title || "",
+      message: message || "",
+      folder: folder || "",
+      timestamp: new Date().toISOString(),
+    };
+    $("epTitle").textContent = title || (warning ? "Warning" : "Error");
+    $("epMessage").textContent = message || "";
+    if (folder) {
+      $("epPath").textContent = "Folder: " + folder;
+      $("epPath").hidden = false;
+    } else {
+      $("epPath").hidden = true;
+    }
+    $("epShowFinder").hidden = !folder;
+    $("errorPanel").classList.toggle("warning", !!warning);
+    $("errorPanel").hidden = false;
+  }
+
+  function hideErrorPanel() {
+    $("errorPanel").hidden = true;
+    currentErrorDetails = null;
+  }
+
+  function hideMiniWarn() {
+    $("miniWarn").hidden = true;
+    $("miniWarn").textContent = "";
+  }
+
+  async function copyErrorDetails() {
+    if (!currentErrorDetails) return;
+    const text = [
+      currentErrorDetails.title,
+      currentErrorDetails.message,
+      currentErrorDetails.folder ? "Folder: " + currentErrorDetails.folder : "",
+      "Time: " + currentErrorDetails.timestamp,
+    ].filter(Boolean).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (e) {
+      // Fallback for environments without clipboard permission.
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (e) {
+      // Give up quietly — nothing more we can do without clipboard access.
+    }
+  }
+
+  // --- Log viewer ---
+
+  function toggleLogPanel(open) {
+    const panel = $("logPanel");
+    const shouldOpen = open != null ? open : panel.hidden;
+    panel.hidden = !shouldOpen;
+    if (shouldOpen) refreshLog();
+  }
+
+  async function refreshLog() {
+    $("logBox").textContent = "Loading…";
+    const minLevel = $("logLevelSelect").value;
+    let res;
+    try {
+      res = await window.pywebview.api.get_log_tail(200, minLevel);
+    } catch (e) {
+      $("logBox").textContent = "Failed to load log.";
+      return;
+    }
+    if (!res || !res.ok) {
+      $("logBox").textContent = "Failed to load log: " + ((res && res.error) || "unknown error");
+      return;
+    }
+    if (!res.exists) {
+      $("logBox").textContent = "No log file yet at " + res.path;
+      return;
+    }
+    $("logBox").textContent = res.lines && res.lines.length ? res.lines.join("\n") : "(no matching log lines)";
+    $("logBox").scrollTop = $("logBox").scrollHeight;
+  }
+
   const STATE_LABELS = {
     idle: "ready", recording: "● recording", mixing: "mixing…",
     mixed: "mixed", transcribing: "transcribing…",
@@ -270,6 +516,10 @@
       setStatus(`Transcribing with OpenAI Whisper…${chunk}`);
     } else if (data.state === "summarizing") {
       setStatus("Generating notes (GPT)…");
+      if (data.warnings && data.warnings.length) {
+        $("miniWarn").textContent = "Note: " + data.warnings.join("; ");
+        $("miniWarn").hidden = false;
+      }
     } else if (data.state === "syncing_notion") {
       setStatus("Sending notes to Notion…");
     } else if (data.state === "done") {
@@ -284,8 +534,30 @@
             : "";
         setStatus(`${title}Notes ready${folderLink}${notionLink}`, "ok");
       }
+      if (data.notion_error) {
+        showErrorPanel({
+          title: "Notion sync failed — notes saved locally",
+          message: "Your notes are safe locally on disk. Notion sync failed: " + data.notion_error,
+          folder: data.folder,
+          warning: true,
+        });
+      }
+      if (data.cleanup_error) {
+        showErrorPanel({
+          title: "Cleanup incomplete — notes are in Notion",
+          message: data.cleanup_error,
+          folder: data.folder,
+          warning: true,
+        });
+      }
     } else if (data.state === "error") {
       setStatus("Error: " + (data.error || "unknown"), "error");
+      showErrorPanel({
+        title: "Recording failed",
+        message: data.error || "Unknown error",
+        folder: data.folder,
+        warning: false,
+      });
     }
   };
 
@@ -325,6 +597,9 @@
   }
 
   async function startRec() {
+    // A new recording supersedes whatever error/warning was showing before.
+    hideErrorPanel();
+    hideMiniWarn();
     busy = true; $("recBtn").disabled = true; $("micSelect").disabled = true;
     setStatus("Starting recording…");
     const raw = $("micSelect").value;
@@ -334,6 +609,12 @@
     if (!res.ok) {
       $("micSelect").disabled = false;
       setStatus("Failed to start: " + (res.error || "unknown error"), "error");
+      showErrorPanel({
+        title: "Failed to start recording",
+        message: res.error || "Unknown error",
+        folder: null,
+        warning: false,
+      });
       return;
     }
     recording = true;
@@ -358,6 +639,20 @@
     recording ? stopRec() : startRec();
   });
   $("micSelect").addEventListener("change", updateMicWarn);
+
+  // --- Error panel wiring ---
+  $("epClose").addEventListener("click", hideErrorPanel);
+  $("epOpenLog").addEventListener("click", () => window.pywebview.api.open_log());
+  $("epShowLogs").addEventListener("click", () => toggleLogPanel(true));
+  $("epShowFinder").addEventListener("click", () => window.pywebview.api.open_folder());
+  $("epCopy").addEventListener("click", copyErrorDetails);
+
+  // --- Log viewer wiring ---
+  $("logsLink").addEventListener("click", () => toggleLogPanel());
+  $("logRefresh").addEventListener("click", refreshLog);
+  $("logOpenFile").addEventListener("click", () => window.pywebview.api.open_log());
+  $("logLevelSelect").addEventListener("change", refreshLog);
+  $("logClose").addEventListener("click", () => toggleLogPanel(false));
 
   // --- Settings (API keys) ---
 
