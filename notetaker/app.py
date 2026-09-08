@@ -18,12 +18,21 @@ import webview
 
 from . import ROOT, check_ffmpeg_installed, config, ensure_ffmpeg_on_path, fix_ssl_cert_env
 from .audio import list_input_devices
+from .audio.mic import close_all_open_recorders
 from .log import LOG_FILE, setup_logging
 from .session import RecordingSession
 
 UI_FILE = ROOT / "ui" / "index.html"
 
 logger = logging.getLogger(__name__)
+
+# Session states that mean "the pipeline is actively working on this session
+# and it must not be torn down / replaced yet". Used by Api.start() to guard
+# against starting a second recording on top of a live one (see the incident
+# this guards against: Api.start() got called while self.session was still
+# "recording", which overwrote self.session and orphaned the live recorders —
+# mic.wav kept growing for hours with its WAV header never finalized).
+NON_TERMINAL_STATES = {"recording", "mixing", "transcribing", "summarizing", "syncing_notion"}
 
 # Matches the standard log line format from notetaker.log.setup_logging:
 # "YYYY-MM-DD HH:MM:SS LEVEL   name: message"
@@ -76,6 +85,18 @@ class Api:
             return []
 
     def start(self, mic_device: Optional[int] = None) -> dict:
+        if self.session and self.session.state in NON_TERMINAL_STATES:
+            logger.warning(
+                "Api.start() called while session %s is still %s; refusing to "
+                "start a second recording on top of it",
+                self.session.dir, self.session.state,
+            )
+            return {
+                "ok": False,
+                "error": f"Already recording (session {self.session.dir.name}). Stop it first.",
+                "state": self.session.state,
+                "folder": str(self.session.dir),
+            }
         ffmpeg_error = check_ffmpeg_installed()
         if ffmpeg_error:
             return {"ok": False, "error": ffmpeg_error}
@@ -198,6 +219,20 @@ class Api:
                 "folder": str(session.dir),
                 "error": f"Unexpected internal error: {exc}. See log file for details.",
             })
+
+    def get_state(self) -> dict:
+        """Lets the UI (re)sync its client-side `recording` flag against the
+        actual backend session state — on page load, and periodically, so a
+        reload or a desync (the bug behind the start() guard above) always
+        self-heals instead of the UI trusting its own possibly-stale flag."""
+        if not self.session:
+            return {"state": "ready", "folder": None, "elapsed": 0.0, "recording": False}
+        return {
+            "state": self.session.state,
+            "folder": str(self.session.dir) if self.session.dir else None,
+            "elapsed": round(self.session.elapsed, 1),
+            "recording": self.session.state in NON_TERMINAL_STATES,
+        }
 
     # --- settings / API keys ---
 
@@ -354,6 +389,14 @@ def main() -> None:
     # of a fresh one that can see the new grant. For this single-window
     # tool, closing the window should just quit the app entirely.
     def _quit() -> None:
+        # Force-close any MicRecorder still open (e.g. a live recording the
+        # user never stopped before closing the window) so its WAV header
+        # gets finalized instead of being orphaned mid-recording — see
+        # notetaker.audio.mic for the incident this guards against.
+        try:
+            close_all_open_recorders()
+        except Exception:
+            logger.exception("close_all_open_recorders() failed during shutdown")
         os._exit(0)
 
     window.events.closed += _quit

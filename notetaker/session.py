@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import sys
 import time
@@ -19,10 +20,20 @@ from .audio import MicRecorder, SystemAudioRecorder, mix_to_mp3
 from .outputs import create_notion_page, write_local_outputs
 from .pipeline import summarize, transcribe
 from .pipeline.summarize import MODEL as SUMMARY_MODEL
+from .pipeline.transcribe import _get_audio_duration
 
 DEFAULT_REC_DIR = RECORDINGS_DIR
 
 logger = logging.getLogger(__name__)
+
+# Transcript-quality guard (added after an orphaned/garbage recording — see
+# audio/mic.py's module docstring for the incident — produced a 4-character
+# transcript that was still summarized and synced to Notion, with its audio
+# then deleted by cleanup). A real conversation produces roughly 1000+
+# characters per minute; these thresholds are deliberately far below that,
+# so only a transcript with essentially no usable speech trips the guard.
+MIN_TRANSCRIPT_CHARS_ABS = 80
+MIN_TRANSCRIPT_CHARS_PER_MIN = 15
 
 
 class RecordingSession:
@@ -338,6 +349,44 @@ class RecordingSession:
                 # transcript_chunk_NNN.txt files.
                 transcript_txt_path.write_text(self.transcript, encoding="utf-8")
                 logger.info("Raw transcript written: %s", transcript_txt_path)
+
+            if os.environ.get("NOTETAKER_SKIP_TRANSCRIPT_GUARD") == "1":
+                logger.warning(
+                    "NOTETAKER_SKIP_TRANSCRIPT_GUARD=1: bypassing transcript-quality guard"
+                )
+            else:
+                try:
+                    duration_seconds = _get_audio_duration(self.mixed_path)
+                except Exception:
+                    logger.exception(
+                        "Transcript guard: failed to get audio duration for %s; "
+                        "skipping the guard rather than blocking the pipeline on it",
+                        self.mixed_path,
+                    )
+                    duration_seconds = None
+
+                if duration_seconds is not None:
+                    minutes = duration_seconds / 60.0
+                    min_chars = max(
+                        MIN_TRANSCRIPT_CHARS_ABS,
+                        MIN_TRANSCRIPT_CHARS_PER_MIN * minutes,
+                    )
+                    transcript_chars = len((self.transcript or "").strip())
+                    if transcript_chars < min_chars:
+                        error_msg = (
+                            f"Transcript too short for a {minutes:.1f}-minute recording "
+                            f"({transcript_chars} chars) — likely no usable speech. "
+                            f"Audio kept in {self.dir}; nothing sent to Notion."
+                        )
+                        logger.error(error_msg)
+                        self.error = error_msg
+                        emit(
+                            "error",
+                            error=error_msg,
+                            transcript_chars=transcript_chars,
+                            minutes=round(minutes, 1),
+                        )
+                        return
 
             emit("summarizing")
             logger.info("Summarize start (model=%s)", SUMMARY_MODEL)

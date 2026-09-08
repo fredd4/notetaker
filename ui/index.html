@@ -557,8 +557,17 @@
     done: "saved", error: "error",
   };
 
-  // Called from Python (evaluate_js) with the current session state.
+  // Called from Python (evaluate_js) with the current session state. The
+  // backend is authoritative for whether we're recording — every status
+  // push (including the ~0.4s poller that runs the whole time a session is
+  // live) carries data.state, so this also self-heals a client-side
+  // `recording` desync (e.g. after a reload) without needing a separate
+  // poll loop in JS.
   window.onStatus = function (data) {
+    if (data.state) {
+      recording = (data.state === "recording");
+      document.body.classList.toggle("recording", recording);
+    }
     $("stateLbl").textContent = STATE_LABELS[data.state] || data.state;
     if (data.elapsed != null) $("timer").textContent = fmtTime(data.elapsed);
     if (data.mic_bytes != null) $("micSize").textContent = fmtBytes(data.mic_bytes);
@@ -673,6 +682,22 @@
     const res = await window.pywebview.api.start(Number.isNaN(dev) ? null : dev);
     busy = false; $("recBtn").disabled = false;
     if (!res.ok) {
+      // Backend refused because a session is already recording (client-side
+      // `recording` flag had desynced) — reflect what's actually true
+      // instead of leaving the UI stuck on "Starting recording…".
+      if (res.error && res.error.indexOf("Already recording") === 0) {
+        recording = true;
+        document.body.classList.add("recording");
+        $("micSelect").disabled = true;
+        setStatus('<span class="dot">●</span> Recording…');
+        showNoticeCard({
+          title: "Already recording",
+          message: res.error,
+          folder: res.folder || null,
+          warning: true,
+        });
+        return;
+      }
       $("micSelect").disabled = false;
       setStatus("Failed to start: " + (res.error || "unknown error"), "error");
       showNoticeCard({
@@ -791,7 +816,31 @@
   window.addEventListener("pywebviewready", async () => {
     $("recBtn").disabled = false;
     await loadDevices();
-    setStatus("Click to start recording.");
+
+    // Resync against the backend's actual session state — e.g. after a
+    // page reload while a recording (or the pipeline) is already running,
+    // so the UI doesn't start from a blank "ready" state that disagrees
+    // with reality.
+    let state = null;
+    try {
+      state = await window.pywebview.api.get_state();
+    } catch (e) {}
+
+    if (state && state.recording) {
+      recording = true;
+      document.body.classList.add("recording");
+      $("micSelect").disabled = true;
+      if (state.elapsed != null) $("timer").textContent = fmtTime(state.elapsed);
+      $("stateLbl").textContent = STATE_LABELS[state.state] || state.state;
+      setStatus('<span class="dot">●</span> Recording…');
+    } else {
+      recording = false;
+      document.body.classList.remove("recording");
+      if (state && state.state) {
+        $("stateLbl").textContent = STATE_LABELS[state.state] || state.state;
+      }
+      setStatus("Click to start recording.");
+    }
   });
 </script>
 </body>
