@@ -12,6 +12,7 @@ from typing import Optional
 
 CHUNK_CHARS = 1900  # Notion's rich_text limit is 2000 chars; leave headroom
 BATCH_BLOCKS = 90  # API limit is 100 blocks per request; leave headroom
+WORKSPACE_PARENT = "workspace"  # mirrors config.NOTION_WORKSPACE_PARENT
 
 _BOLD_RE = re.compile(r"(\*\*[^*]+\*\*)")
 
@@ -131,7 +132,8 @@ def create_notion_page(
     token: str,
     date_prefix: Optional[str] = None,
 ) -> dict:
-    """Creates a page in Notion under parent_page_id. Returns {url, page_id}.
+    """Creates a page in Notion under parent_page_id (or at the top level of
+    the user's Private section when it is "workspace"). Returns {url, page_id}.
 
     date_prefix (e.g. "2026-07-08"), if given, is prepended to the title —
     ISO order so pages sort chronologically in Notion's page list.
@@ -146,8 +148,14 @@ def create_notion_page(
     summary_blocks = _build_summary_blocks(notes)
     first_batch, rest = summary_blocks[:BATCH_BLOCKS], summary_blocks[BATCH_BLOCKS:]
 
+    # "workspace" = top level of the user's Private section (OAuth token only).
+    if parent_page_id == WORKSPACE_PARENT:
+        parent = {"type": "workspace", "workspace": True}
+    else:
+        parent = {"page_id": parent_page_id}
+
     page = client.pages.create(
-        parent={"page_id": parent_page_id},
+        parent=parent,
         properties={"title": {"title": [{"type": "text", "text": {"content": title}}]}},
         children=first_batch,
     )

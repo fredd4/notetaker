@@ -273,6 +273,7 @@
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 14px; padding: 20px;
     display: flex; flex-direction: column; gap: 16px;
+    max-height: calc(100vh - 32px); overflow-y: auto;
   }
   .modal h2 { font-size: 15px; font-weight: 600; }
   .field { display: flex; flex-direction: column; gap: 6px; }
@@ -289,6 +290,7 @@
   }
   .field input:focus { outline: 1px solid #0a84ff; border-color: #0a84ff; }
   .field .hint { font-size: 11px; color: var(--muted); }
+  .oauth-row { display: flex; gap: 14px; }
   .modal-actions {
     display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;
   }
@@ -387,6 +389,18 @@
       </div>
 
       <div class="field">
+        <label>Notion — connect account <span class="saved-tag" id="notionOauthSaved"></span></label>
+        <input type="text" id="notionClientId" placeholder="OAuth client ID">
+        <input type="password" id="notionClientSecret" placeholder="OAuth client secret">
+        <span class="hint">Public integration — notes land at the top of your Private sidebar.
+          Redirect URI: http://localhost:53682/callback</span>
+        <div class="oauth-row">
+          <button class="text-link" id="notionConnect">Connect Notion</button>
+          <button class="text-link" id="notionDisconnect" hidden>Disconnect</button>
+        </div>
+      </div>
+
+      <div class="field">
         <label>Notion Integration Token <span class="saved-tag" id="notionSaved"></span></label>
         <input type="password" id="notionToken" placeholder="ntn_... or secret_...">
         <span class="hint">Optional — only needed to save notes to Notion.</span>
@@ -395,7 +409,7 @@
       <div class="field">
         <label>Notion — parent page ID <span class="saved-tag" id="notionParentSaved"></span></label>
         <input type="text" id="notionParent" placeholder="e.g. 1a2b3c4d5e6f...">
-        <span class="hint">The page/database where notes will be created.</span>
+        <span class="hint">Fallback when no account is connected: notes go under this page.</span>
       </div>
 
       <div class="modal-status" id="modalStatus"></div>
@@ -764,10 +778,45 @@
     $("openaiSaved").textContent = st.openai_set ? "✓ saved" : "";
     $("notionSaved").textContent = st.notion_set ? "✓ saved" : "";
     $("notionParentSaved").textContent = st.notion_parent_set ? "✓ saved" : "";
+    $("notionOauthSaved").textContent = st.notion_oauth_connected
+      ? "✓ connected" + (st.notion_oauth_workspace ? ` (${st.notion_oauth_workspace})` : "")
+      : st.notion_client_set ? "client saved" : "";
+    $("notionDisconnect").hidden = !st.notion_oauth_connected;
+    $("notionClientId").hidden = $("notionClientSecret").hidden = !!st.notion_oauth_connected;
+    $("notionConnect").textContent = st.notion_oauth_connected ? "Reconnect" : "Connect Notion";
   }
+
+  $("notionConnect").addEventListener("click", async () => {
+    const id = $("notionClientId").value.trim();
+    const secret = $("notionClientSecret").value.trim();
+    if (id || secret) {
+      const saved = await window.pywebview.api.save_notion_client(id, secret);
+      if (!saved.ok) { setModalStatus("Save failed: " + (saved.error || ""), true); return; }
+      $("notionClientId").value = "";
+      $("notionClientSecret").value = "";
+    }
+    const res = await window.pywebview.api.connect_notion();
+    if (res.ok) setModalStatus("Approve access in the browser…");
+    else setModalStatus(res.error || "Could not start Notion connection.", true);
+    await refreshKeyStatus();
+  });
+
+  $("notionDisconnect").addEventListener("click", async () => {
+    await window.pywebview.api.disconnect_notion();
+    setModalStatus("Notion account disconnected.");
+    await refreshKeyStatus();
+  });
+
+  window.onNotionAuth = async function (res) {
+    if (res.ok) setModalStatus("Notion connected" + (res.workspace ? ` — ${res.workspace}` : "") + ".");
+    else setModalStatus("Notion connection failed: " + (res.error || ""), true);
+    await refreshKeyStatus();
+  };
 
   async function openSettings() {
     $("openaiKey").value = "";
+    $("notionClientId").value = "";
+    $("notionClientSecret").value = "";
     $("notionToken").value = "";
     $("notionParent").value = "";
     setModalStatus("");

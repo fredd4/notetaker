@@ -23,6 +23,16 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 OPENAI_KEY_NAME = "openai_api_key"
 NOTION_TOKEN_NAME = "notion_token"
 NOTION_PARENT_NAME = "notion_parent_page_id"
+NOTION_CLIENT_ID_NAME = "notion_oauth_client_id"
+NOTION_CLIENT_SECRET_NAME = "notion_oauth_client_secret"
+NOTION_OAUTH_TOKEN_NAME = "notion_oauth_access_token"
+NOTION_OAUTH_REFRESH_NAME = "notion_oauth_refresh_token"
+NOTION_OAUTH_WORKSPACE_NAME = "notion_oauth_workspace_name"
+
+# Sentinel "parent" meaning "top level of the user's Private section" —
+# only possible with a user-owned OAuth token (public integration), since
+# Notion refuses workspace-level pages for internal integrations.
+NOTION_WORKSPACE_PARENT = "workspace"
 
 
 def _load() -> dict:
@@ -77,10 +87,69 @@ def set_notion_parent_page(value: str) -> None:
     _set(NOTION_PARENT_NAME, value.strip())
 
 
+def get_notion_client_id() -> Optional[str]:
+    return _get(NOTION_CLIENT_ID_NAME)
+
+
+def set_notion_client_id(value: str) -> None:
+    _set(NOTION_CLIENT_ID_NAME, value.strip())
+
+
+def get_notion_client_secret() -> Optional[str]:
+    return _get(NOTION_CLIENT_SECRET_NAME)
+
+
+def set_notion_client_secret(value: str) -> None:
+    _set(NOTION_CLIENT_SECRET_NAME, value.strip())
+
+
+def get_notion_oauth_token() -> Optional[str]:
+    return _get(NOTION_OAUTH_TOKEN_NAME)
+
+
+def get_notion_oauth_refresh_token() -> Optional[str]:
+    return _get(NOTION_OAUTH_REFRESH_NAME)
+
+
+def set_notion_oauth(access_token: str, refresh_token: str = "", workspace_name: str = "") -> None:
+    """Stores (or, with empty values, clears) the OAuth connection in one write."""
+    data = _load()
+    for name, value in (
+        (NOTION_OAUTH_TOKEN_NAME, access_token),
+        (NOTION_OAUTH_REFRESH_NAME, refresh_token),
+        (NOTION_OAUTH_WORKSPACE_NAME, workspace_name),
+    ):
+        if value:
+            data[name] = value
+        else:
+            data.pop(name, None)
+    _save(data)
+
+
+def get_notion_destination() -> tuple[Optional[str], Optional[str]]:
+    """Returns (token, parent) for Notion sync.
+
+    An OAuth connection wins: notes go to the top level of the user's
+    Private section (parent == NOTION_WORKSPACE_PARENT). Otherwise falls
+    back to the internal integration token + parent page ID. (None, None)
+    when Notion isn't configured.
+    """
+    oauth_token = get_notion_oauth_token()
+    if oauth_token:
+        return oauth_token, NOTION_WORKSPACE_PARENT
+    token, parent = get_notion_token(), get_notion_parent_page()
+    if token and parent:
+        return token, parent
+    return None, None
+
+
 def status() -> dict:
     """Key status for the UI — never returns the actual values."""
     return {
         "openai_set": bool(get_openai_key()),
         "notion_set": bool(get_notion_token()),
         "notion_parent_set": bool(get_notion_parent_page()),
+        "notion_client_set": bool(get_notion_client_id() and get_notion_client_secret()),
+        "notion_oauth_connected": bool(get_notion_oauth_token()),
+        "notion_oauth_workspace": _get(NOTION_OAUTH_WORKSPACE_NAME) or "",
     }

@@ -16,7 +16,7 @@ from typing import Optional
 
 import webview
 
-from . import ROOT, check_ffmpeg_installed, config, ensure_ffmpeg_on_path, fix_ssl_cert_env
+from . import ROOT, check_ffmpeg_installed, config, ensure_ffmpeg_on_path, fix_ssl_cert_env, notion_auth
 from .audio import list_input_devices
 from .audio.mic import close_all_open_recorders
 from .log import LOG_FILE, setup_logging
@@ -147,8 +147,7 @@ class Api:
             self._push(st)
             return {"ok": True, "path": str(path)}
 
-        notion_token = config.get_notion_token()
-        notion_parent = config.get_notion_parent_page()
+        notion_token, notion_parent = config.get_notion_destination()
         threading.Thread(
             target=self._run_pipeline,
             args=(self.session, api_key, notion_token, notion_parent),
@@ -266,6 +265,40 @@ class Api:
         if not fn:
             return {"ok": False, "error": f"unknown key: {name}"}
         fn("")
+        return {"ok": True, "status": config.status()}
+
+    # --- Notion OAuth (public integration → top level of Private) ---
+
+    def save_notion_client(self, client_id: str = "", client_secret: str = "") -> dict:
+        try:
+            if client_id:
+                config.set_notion_client_id(client_id)
+            if client_secret:
+                config.set_notion_client_secret(client_secret)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "status": config.status()}
+
+    def connect_notion(self) -> dict:
+        """Opens Notion's consent page in the browser; the outcome arrives
+        later via window.onNotionAuth({ok, workspace|error})."""
+
+        def on_done(result: dict) -> None:
+            if self.window:
+                try:
+                    self.window.evaluate_js(f"window.onNotionAuth({json.dumps(result)})")
+                except Exception:
+                    logger.debug("Failed to push Notion auth result", exc_info=True)
+
+        try:
+            notion_auth.run_authorization(on_done)
+        except Exception as exc:
+            logger.exception("Could not start Notion OAuth")
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True}
+
+    def disconnect_notion(self) -> dict:
+        notion_auth.disconnect()
         return {"ok": True, "status": config.status()}
 
     def open_folder(self) -> dict:

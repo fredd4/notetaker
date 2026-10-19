@@ -112,9 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     notion_token = None
     notion_parent = None
     if not args.no_notion:
-        notion_token = config.get_notion_token()
-        notion_parent = config.get_notion_parent_page()
-        if not (notion_token and notion_parent):
+        notion_token, notion_parent = config.get_notion_destination()
+        if not notion_token:
             print("Notion not configured — skipping Notion sync (local outputs only).")
 
     session = RecordingSession.from_existing_dir(session_dir)

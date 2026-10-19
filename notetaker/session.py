@@ -15,8 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import RECORDINGS_DIR
+from notion_client import APIErrorCode, APIResponseError
+
+from . import RECORDINGS_DIR, config
 from .audio import MicRecorder, SystemAudioRecorder, mix_to_mp3
+from .notion_auth import refresh_access_token
 from .outputs import create_notion_page, write_local_outputs
 from .pipeline import summarize, transcribe
 from .pipeline.summarize import MODEL as SUMMARY_MODEL
@@ -411,13 +414,31 @@ class RecordingSession:
                         if self.started_at
                         else None
                     )
-                    result = create_notion_page(
-                        self.notes,
-                        self.transcript,
-                        notion_parent,
-                        notion_token,
-                        date_prefix=date_prefix,
-                    )
+                    try:
+                        result = create_notion_page(
+                            self.notes,
+                            self.transcript,
+                            notion_parent,
+                            notion_token,
+                            date_prefix=date_prefix,
+                        )
+                    except APIResponseError as exc:
+                        # OAuth access tokens can expire — refresh once and retry.
+                        new_token = (
+                            refresh_access_token()
+                            if exc.code == APIErrorCode.Unauthorized
+                            and notion_parent == config.NOTION_WORKSPACE_PARENT
+                            else None
+                        )
+                        if not new_token:
+                            raise
+                        result = create_notion_page(
+                            self.notes,
+                            self.transcript,
+                            notion_parent,
+                            new_token,
+                            date_prefix=date_prefix,
+                        )
                     self.notion_url = result.get("url")
                     logger.info("Notion sync done: %s", self.notion_url)
                 except Exception as exc:
