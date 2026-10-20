@@ -243,6 +243,9 @@ class Api:
         openai_key: str = "",
         notion_token: str = "",
         notion_parent: str = "",
+        notion_client_id: str = "",
+        notion_client_secret: str = "",
+        notion_destination: str = "",
     ) -> dict:
         try:
             if openai_key:
@@ -251,6 +254,12 @@ class Api:
                 config.set_notion_token(notion_token)
             if notion_parent:
                 config.set_notion_parent_page(notion_parent)
+            if notion_client_id:
+                config.set_notion_client_id(notion_client_id)
+            if notion_client_secret:
+                config.set_notion_client_secret(notion_client_secret)
+            if notion_destination:
+                config.set_notion_destination_choice(notion_destination)
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "status": config.status()}
@@ -268,16 +277,6 @@ class Api:
         return {"ok": True, "status": config.status()}
 
     # --- Notion OAuth (public integration → top level of Private) ---
-
-    def save_notion_client(self, client_id: str = "", client_secret: str = "") -> dict:
-        try:
-            if client_id:
-                config.set_notion_client_id(client_id)
-            if client_secret:
-                config.set_notion_client_secret(client_secret)
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
-        return {"ok": True, "status": config.status()}
 
     def connect_notion(self) -> dict:
         """Opens Notion's consent page in the browser; the outcome arrives

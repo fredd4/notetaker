@@ -28,6 +28,12 @@ NOTION_CLIENT_SECRET_NAME = "notion_oauth_client_secret"
 NOTION_OAUTH_TOKEN_NAME = "notion_oauth_access_token"
 NOTION_OAUTH_REFRESH_NAME = "notion_oauth_refresh_token"
 NOTION_OAUTH_WORKSPACE_NAME = "notion_oauth_workspace_name"
+NOTION_DESTINATION_NAME = "notion_destination"
+
+# Where the user wants notes: "private" (top of Private, needs OAuth) or
+# "page" (under the parent page, internal token). Unset = "private" when
+# connected, otherwise "page".
+NOTION_DESTINATIONS = ("private", "page")
 
 # Sentinel "parent" meaning "top level of the user's Private section" —
 # only possible with a user-owned OAuth token (public integration), since
@@ -126,21 +132,43 @@ def set_notion_oauth(access_token: str, refresh_token: str = "", workspace_name:
     _save(data)
 
 
-def get_notion_destination() -> tuple[Optional[str], Optional[str]]:
-    """Returns (token, parent) for Notion sync.
+def get_notion_destination_choice() -> Optional[str]:
+    value = _get(NOTION_DESTINATION_NAME)
+    return value if value in NOTION_DESTINATIONS else None
 
-    An OAuth connection wins: notes go to the top level of the user's
-    Private section (parent == NOTION_WORKSPACE_PARENT). Otherwise falls
-    back to the internal integration token + parent page ID. (None, None)
-    when Notion isn't configured.
-    """
+
+def set_notion_destination_choice(value: str) -> None:
+    if value and value not in NOTION_DESTINATIONS:
+        raise ValueError(f"unknown Notion destination: {value}")
+    _set(NOTION_DESTINATION_NAME, value)
+
+
+def _notion_targets() -> dict:
+    """Configured Notion targets, keyed by destination name."""
+    targets = {}
     oauth_token = get_notion_oauth_token()
     if oauth_token:
-        return oauth_token, NOTION_WORKSPACE_PARENT
+        targets["private"] = (oauth_token, NOTION_WORKSPACE_PARENT)
     token, parent = get_notion_token(), get_notion_parent_page()
     if token and parent:
-        return token, parent
-    return None, None
+        targets["page"] = (token, parent)
+    return targets
+
+
+def _effective_destination() -> Optional[str]:
+    """The chosen destination if it's configured, else whichever one is —
+    so a half-finished setup still syncs somewhere instead of nowhere."""
+    targets = _notion_targets()
+    order = ["page", "private"] if get_notion_destination_choice() == "page" else ["private", "page"]
+    return next((d for d in order if d in targets), None)
+
+
+def get_notion_destination() -> tuple[Optional[str], Optional[str]]:
+    """Returns (token, parent) for Notion sync, or (None, None) when Notion
+    isn't configured. parent == NOTION_WORKSPACE_PARENT means the top level
+    of the user's Private section."""
+    dest = _effective_destination()
+    return _notion_targets()[dest] if dest else (None, None)
 
 
 def status() -> dict:
@@ -152,4 +180,6 @@ def status() -> dict:
         "notion_client_set": bool(get_notion_client_id() and get_notion_client_secret()),
         "notion_oauth_connected": bool(get_notion_oauth_token()),
         "notion_oauth_workspace": _get(NOTION_OAUTH_WORKSPACE_NAME) or "",
+        "notion_destination": get_notion_destination_choice() or "",
+        "notion_target": _effective_destination() or "",
     }

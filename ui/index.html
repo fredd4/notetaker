@@ -291,6 +291,13 @@
   .field input:focus { outline: 1px solid #0a84ff; border-color: #0a84ff; }
   .field .hint { font-size: 11px; color: var(--muted); }
   .oauth-row { display: flex; gap: 14px; }
+  .setup-warn {
+    background: none; border: none; padding: 0; margin-top: 6px;
+    font: inherit; font-size: 11.5px; color: var(--warn);
+    cursor: pointer; text-align: center;
+  }
+  .setup-warn:hover { text-decoration: underline; }
+  body.recording .setup-warn { display: none; }
   .modal-actions {
     display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;
   }
@@ -346,6 +353,7 @@
   </div>
 
   <div class="status" id="status">Click to start recording.</div>
+  <button class="setup-warn" id="setupWarn" hidden></button>
 
   <div class="notice-card" id="noticeCard" hidden>
     <div class="notice-head">
@@ -389,6 +397,15 @@
       </div>
 
       <div class="field">
+        <label>Save notes in Notion to</label>
+        <select id="notionDestination">
+          <option value="private">Top of Private sidebar (connected account)</option>
+          <option value="page">Under a parent page (integration token)</option>
+        </select>
+        <span class="hint" id="notionDestHint"></span>
+      </div>
+
+      <div class="field">
         <label>Notion — connect account <span class="saved-tag" id="notionOauthSaved"></span></label>
         <input type="text" id="notionClientId" placeholder="OAuth client ID">
         <input type="password" id="notionClientSecret" placeholder="OAuth client secret">
@@ -409,7 +426,7 @@
       <div class="field">
         <label>Notion — parent page ID <span class="saved-tag" id="notionParentSaved"></span></label>
         <input type="text" id="notionParent" placeholder="e.g. 1a2b3c4d5e6f...">
-        <span class="hint">Fallback when no account is connected: notes go under this page.</span>
+        <span class="hint">Notes go under this page when "Under a parent page" is selected.</span>
       </div>
 
       <div class="modal-status" id="modalStatus"></div>
@@ -783,14 +800,48 @@
       : st.notion_client_set ? "client saved" : "";
     $("notionDisconnect").hidden = !st.notion_oauth_connected;
     $("notionClientId").hidden = $("notionClientSecret").hidden = !!st.notion_oauth_connected;
+    $("notionDestination").value = st.notion_destination || (st.notion_oauth_connected ? "private" : "page");
+    $("notionDestHint").textContent = destinationHint(st);
+    updateSetupWarn(st);
     $("notionConnect").textContent = st.notion_oauth_connected ? "Reconnect" : "Connect Notion";
   }
+
+  // What will actually happen on the next sync, given the choice and what's
+  // configured (the backend falls back to whichever target is set up).
+  function destinationHint(st) {
+    const chosen = st.notion_destination || (st.notion_oauth_connected ? "private" : "page");
+    if (!st.notion_target) return "Notion not set up yet — notes stay on this Mac.";
+    if (st.notion_target !== chosen) {
+      return chosen === "private"
+        ? "Account not connected yet — notes go under the parent page for now."
+        : "Parent page not set — notes go to the top of Private for now.";
+    }
+    return "";
+  }
+
+  // Shown on the main screen so a missing key is noticed before recording,
+  // not after the meeting.
+  function updateSetupWarn(st) {
+    let msg = "";
+    if (!st.openai_set) msg = "No OpenAI key — only audio will be saved. Open Settings.";
+    else if (!st.notion_target) msg = "Notion not set up — notes will stay on this Mac.";
+    else msg = destinationHint(st);
+    $("setupWarn").textContent = msg;
+    $("setupWarn").hidden = !msg;
+  }
+  $("setupWarn").addEventListener("click", openSettings);
+
+  $("notionDestination").addEventListener("change", async () => {
+    const res = await window.pywebview.api.save_keys("", "", "", "", "", $("notionDestination").value);
+    setModalStatus(res.ok ? "Saved." : "Save failed: " + (res.error || ""), !res.ok);
+    await refreshKeyStatus();
+  });
 
   $("notionConnect").addEventListener("click", async () => {
     const id = $("notionClientId").value.trim();
     const secret = $("notionClientSecret").value.trim();
     if (id || secret) {
-      const saved = await window.pywebview.api.save_notion_client(id, secret);
+      const saved = await window.pywebview.api.save_keys("", "", "", id, secret);
       if (!saved.ok) { setModalStatus("Save failed: " + (saved.error || ""), true); return; }
       $("notionClientId").value = "";
       $("notionClientSecret").value = "";
@@ -837,14 +888,18 @@
     const openai = $("openaiKey").value.trim();
     const notion = $("notionToken").value.trim();
     const parent = $("notionParent").value.trim();
-    if (!openai && !notion && !parent) {
+    const clientId = $("notionClientId").value.trim();
+    const clientSecret = $("notionClientSecret").value.trim();
+    if (!openai && !notion && !parent && !clientId && !clientSecret) {
       setModalStatus("Enter at least one value.", true);
       return;
     }
     setModalStatus("Saving…");
-    const res = await window.pywebview.api.save_keys(openai, notion, parent);
+    const res = await window.pywebview.api.save_keys(openai, notion, parent, clientId, clientSecret);
     if (res.ok) {
-      setModalStatus("Saved.");
+      setModalStatus(clientId || clientSecret ? "Saved. Now click Connect Notion." : "Saved.");
+      $("notionClientId").value = "";
+      $("notionClientSecret").value = "";
       $("openaiKey").value = "";
       $("notionToken").value = "";
       $("notionParent").value = "";
@@ -865,6 +920,7 @@
   window.addEventListener("pywebviewready", async () => {
     $("recBtn").disabled = false;
     await loadDevices();
+    await refreshKeyStatus();
 
     // Resync against the backend's actual session state — e.g. after a
     // page reload while a recording (or the pipeline) is already running,
