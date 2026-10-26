@@ -291,6 +291,16 @@
   .field input:focus { outline: 1px solid #0a84ff; border-color: #0a84ff; }
   .field .hint { font-size: 11px; color: var(--muted); }
   .oauth-row { display: flex; gap: 14px; }
+  .setup-steps { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
+  .setup-steps summary { cursor: pointer; color: var(--text); opacity: .8; }
+  .setup-steps summary:hover { opacity: 1; }
+  .setup-steps ol { margin: 8px 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .setup-steps p { margin-top: 8px; }
+  .setup-steps b { color: var(--text); font-weight: 500; }
+  .setup-steps code {
+    font-family: ui-monospace, monospace; color: var(--text);
+    -webkit-user-select: text; user-select: text;
+  }
   .setup-warn {
     background: none; border: none; padding: 0; margin-top: 6px;
     font: inherit; font-size: 11.5px; color: var(--warn);
@@ -409,12 +419,28 @@
         <label>Notion — connect account <span class="saved-tag" id="notionOauthSaved"></span></label>
         <input type="text" id="notionClientId" placeholder="OAuth client ID">
         <input type="password" id="notionClientSecret" placeholder="OAuth client secret">
-        <span class="hint">Public integration — notes land at the top of your Private sidebar.
-          Redirect URI: http://localhost:53682/callback</span>
+        <span class="hint">Notes land at the top of your Private sidebar, like Notion's own meeting notes.</span>
         <div class="oauth-row">
           <button class="text-link" id="notionConnect">Connect Notion</button>
           <button class="text-link" id="notionDisconnect" hidden>Disconnect</button>
         </div>
+        <details class="setup-steps" id="notionSetupSteps">
+          <summary>Where to get the client ID and secret</summary>
+          <ol>
+            <li>Open <a class="link" id="notionIntegrationsLink">notion.so/profile/integrations</a>
+              and create a new integration of type <b>Public</b>. An Internal integration won't work:
+              Notion doesn't let it create pages in your Private sidebar.</li>
+            <li>Notion asks for a company name, website, privacy policy and terms URLs. Your own
+              site is fine for all of them. They only appear on the consent screen you'll see.</li>
+            <li>Capabilities: <b>Read content</b>, <b>Update content</b>, <b>Insert content</b>.</li>
+            <li>Redirect URI, exactly:<br><code>http://localhost:53682/callback</code></li>
+            <li>Save. The integration's page now shows the <b>OAuth client ID</b> and
+              <b>OAuth client secret</b>. Paste them above.</li>
+            <li>Click <b>Connect Notion</b> and approve access in the browser.</li>
+          </ol>
+          <p>Moving to a new Mac? Reuse the same integration: copy the ID and secret from that
+            page again and click Connect. You don't need to create a new one.</p>
+        </details>
       </div>
 
       <div class="field">
@@ -800,6 +826,7 @@
       : st.notion_client_set ? "client saved" : "";
     $("notionDisconnect").hidden = !st.notion_oauth_connected;
     $("notionClientId").hidden = $("notionClientSecret").hidden = !!st.notion_oauth_connected;
+    $("notionSetupSteps").open = !st.notion_oauth_connected;
     $("notionDestination").value = st.notion_destination || (st.notion_oauth_connected ? "private" : "page");
     $("notionDestHint").textContent = destinationHint(st);
     updateSetupWarn(st);
@@ -851,6 +878,9 @@
     else setModalStatus(res.error || "Could not start Notion connection.", true);
     await refreshKeyStatus();
   });
+
+  $("notionIntegrationsLink").addEventListener("click", () =>
+    window.pywebview.api.open_url("https://www.notion.so/profile/integrations"));
 
   $("notionDisconnect").addEventListener("click", async () => {
     await window.pywebview.api.disconnect_notion();
