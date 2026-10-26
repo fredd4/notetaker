@@ -17,6 +17,7 @@ DATA_FILES = [
 
 OPTIONS = {
     "argv_emulation": False,
+    "iconfile": "build/Notetaker.icns",
     "packages": [
         "notetaker",
         "sounddevice",

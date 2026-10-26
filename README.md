@@ -82,6 +82,9 @@ python3 -m venv .venv
 
 # Compiles native/sysaudio.swift into build/sysaudio (universal arm64+x86_64)
 ./scripts/build_helper.sh
+
+# Renders the app icon into build/Notetaker.icns
+./scripts/build_icon.sh
 ```
 
 Run it directly, without packaging:
@@ -121,6 +124,7 @@ notetaker/app.py          pywebview GUI application + JS bridge
 ui/index.html             The interface itself
 setup.py                  py2app packaging config
 scripts/build_helper.sh   Compiles the native audio helper
+scripts/build_icon.sh     Renders the app icon (scripts/make_icon.swift) into an .icns
 ```
 
 ## Known limitations
